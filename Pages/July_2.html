@@ -4,12 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>July 2 — Year Up United</title>
-<link rel="stylesheet" href="../StyleSheet/stylesheet.css" />
+    <link rel="stylesheet" href="../StyleSheet/stylesheet.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css" />
   </head>
   <body id="4">
     <div class="page">
 
-      <a href="index.html" class="back-link" style="text-decoration:none; color:black">← Back to schedule</a>
+      <a href="../index.html" class="back-link" style="text-decoration:none; color:black">← Back to schedule</a>
 
       <div class="meeting-tag">Thursday · All Hands</div>
       <div class="meeting-title">July 2 Meeting</div>
@@ -46,7 +47,7 @@
       const SUPABASE_URL = 'https://hbltngjudpwloiosyjbq.supabase.co';
       const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhibHRuZ2p1ZHB3bG9pb3N5amJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA2MjUxOTgsImV4cCI6MjA5NjIwMTE5OH0.njFF4XHMy_M8SN0BVXp5M7dFdNe8Ceu8hrSY3sP1DuU';
       const MEETING = 'july2';
- 
+
       const ROLES = [
         { name: 'Warm-Up Question', time: '5 mins' },
         { name: 'Community Norms', time: '5 mins' },
@@ -60,10 +61,10 @@
         { name: 'Plus/Delta', time: '10 mins' },
         { name: 'Announcements', time: '5 mins' },
       ];
- 
+
       let myName = '';
       let roleData = [];
- 
+
       function headers() {
         return {
           'apikey': SUPABASE_KEY,
@@ -71,18 +72,27 @@
           'Content-Type': 'application/json'
         };
       }
- 
+
       async function loadRoles() {
-        const res = await fetch(`${SUPABASE_URL}/rest/v1/roles?meeting=eq.${MEETING}&select=*`, { headers: headers() });
-        roleData = await res.json();
-        renderRoles();
+        try {
+          const res = await fetch(`${SUPABASE_URL}/rest/v1/roles?meeting=eq.${MEETING}&select=*`, { headers: headers() });
+          const text = await res.text();
+          if (!res.ok) {
+            document.getElementById('roleList').innerHTML = `<div style="font-size:13px;color:#E24B4A;padding:1rem 0">Error ${res.status}: ${text}</div>`;
+            return;
+          }
+          roleData = JSON.parse(text);
+          renderRoles();
+        } catch(e) {
+          document.getElementById('roleList').innerHTML = `<div style="font-size:13px;color:#E24B4A;padding:1rem 0">Connection error: ${e.message}</div>`;
+        }
       }
- 
+
       function renderRoles() {
         const claimable = ROLES.filter(r => !r.pm).length;
         const taken = roleData.filter(r => r.claimed_by).length;
         document.getElementById('statusText').textContent = `${taken} of ${claimable} roles claimed`;
- 
+
         const html = ROLES.map(role => {
           if (role.pm) {
             return `<div class="role-card pm">
@@ -93,22 +103,22 @@
               <div class="role-right"><span class="pm-badge">PM Daniel</span></div>
             </div>`;
           }
- 
+
           const row = roleData.find(r => r.role_name === role.name);
           const owner = row ? row.claimed_by : null;
           const isMe = owner && owner.toLowerCase() === myName.toLowerCase();
           const isTaken = !!owner && !isMe;
- 
+
           let cardClass = 'role-card';
           if (isMe) cardClass += ' mine';
           else if (isTaken) cardClass += ' taken';
- 
+
           const rightHtml = isMe
             ? `<span class="owner me">✓ ${myName}</span><button class="release-btn" onclick="release('${role.name}')">Release</button>`
             : isTaken
               ? `<span class="owner">${owner}</span>`
               : `<button class="claim-btn" ${!myName ? 'disabled title="Enter your name first"' : ''} onclick="claim('${role.name}')">Claim</button>`;
- 
+
           return `<div class="${cardClass}">
             <div>
               <div class="role-name">${role.name}</div>
@@ -117,15 +127,15 @@
             <div class="role-right">${rightHtml}</div>
           </div>`;
         }).join('');
- 
+
         document.getElementById('roleList').innerHTML = html;
       }
- 
+
       async function claim(roleName) {
         if (!myName) return;
         const row = roleData.find(r => r.role_name === roleName);
         if (row && row.claimed_by) { showToast('Already taken!'); return; }
- 
+
         if (row) {
           await fetch(`${SUPABASE_URL}/rest/v1/roles?id=eq.${row.id}`, {
             method: 'PATCH',
@@ -142,32 +152,35 @@
         showToast('Role claimed!');
         loadRoles();
       }
- 
+
       async function release(roleName) {
         const row = roleData.find(r => r.role_name === roleName);
         if (!row) return;
         await fetch(`${SUPABASE_URL}/rest/v1/roles?id=eq.${row.id}`, {
           method: 'PATCH',
-          headers: { ...headers(), 'Prefer': 'return=minimal' },
+          headers: { ...headers(), 'Prefer': 'return=representation' },
           body: JSON.stringify({ claimed_by: null })
         });
         showToast('Role released');
         loadRoles();
       }
- 
+
       async function resetAll() {
         const pass = prompt('Enter admin password:');
         if (pass !== 'yearup2026') return;
         if (!confirm('Clear all claimed roles for this meeting?')) return;
-       await fetch(`${SUPABASE_URL}/rest/v1/roles?meeting=eq.${MEETING}&claimed_by=not.is.null`, {
-          method: 'PATCH',
-          headers: { ...headers(), 'Prefer': 'return=minimal' },
-          body: JSON.stringify({ claimed_by: null })
-        });
+        const rows = roleData.filter(r => r.claimed_by);
+        await Promise.all(rows.map(r =>
+          fetch(`${SUPABASE_URL}/rest/v1/roles?id=eq.${r.id}`, {
+            method: 'PATCH',
+            headers: { ...headers(), 'Prefer': 'return=representation' },
+            body: JSON.stringify({ claimed_by: null })
+          })
+        ));
         showToast('All roles reset');
         loadRoles();
       }
- 
+
       function setName() {
         const val = document.getElementById('nameInput').value.trim();
         if (!val) return;
@@ -177,7 +190,7 @@
         document.getElementById('activeName').style.display = 'block';
         renderRoles();
       }
- 
+
       function clearName() {
         myName = '';
         document.getElementById('nameForm').style.display = 'flex';
@@ -185,14 +198,14 @@
         document.getElementById('nameInput').value = '';
         renderRoles();
       }
- 
+
       function showToast(msg) {
         const t = document.getElementById('toast');
         t.textContent = msg;
         t.classList.add('show');
         setTimeout(() => t.classList.remove('show'), 2000);
       }
- 
+
       loadRoles();
       setInterval(loadRoles, 8000);
     </script>
