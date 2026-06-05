@@ -153,6 +153,8 @@
       }
  
       async function resetAll() {
+        const pass = prompt('Enter admin password:');
+        if (pass !== 'yearup2026') return;
         if (!confirm('Clear all claimed roles for this meeting?')) return;
         await fetch(`${SUPABASE_URL}/rest/v1/roles?meeting=eq.${MEETING}`, {
           method: 'PATCH',
